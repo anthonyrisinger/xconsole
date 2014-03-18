@@ -1,0 +1,12 @@
+#!/bin/bash
+
+
+set -x; shopt -s extglob nullglob
+IFS=$'\n'
+
+
+for mc in ~/minecraft.d/[0-9][0-9]-*; do
+    if [[ -x ${mc} ]]; then
+        . ${mc}
+    fi
+done

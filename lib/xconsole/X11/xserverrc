@@ -1,0 +1,7 @@
+#!/bin/bash
+
+
+export XDG_VTNR=${XDG_VTNR:-2}
+
+
+. /etc/X11/xinit/xserverrc "${@}"

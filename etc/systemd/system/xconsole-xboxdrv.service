@@ -1,0 +1,24 @@
+#!/bin/bash
+
+[Unit]
+Description=XConsole [xboxdrv]
+BindsTo=xconsole.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/default/xconsole
+IOSchedulingClass=realtime
+IOSchedulingPriority=5
+Nice=-4
+ExecStart=/usr/bin/xboxdrv --detach-kernel-driver --dbus disabled --daemon \
+    --controller-slot 0 --device-name xconsole:0 --wid 0 --led 2 \
+        --config ${XCONSOLE}/etc/xconsole/xboxdrv.conf \
+    --controller-slot 1 --device-name xconsole:1 --wid 1 --led 3 \
+        --config ${XCONSOLE}/etc/xconsole/xboxdrv.conf \
+    --controller-slot 2 --device-name xconsole:2 --wid 2 --led 4 \
+        --config ${XCONSOLE}/etc/xconsole/xboxdrv.conf \
+    --controller-slot 3 --device-name xconsole:3 --wid 3 --led 5 \
+        --config ${XCONSOLE}/etc/xconsole/xboxdrv.conf
+
+[Install]
+RequiredBy=xconsole.target

@@ -1,0 +1,59 @@
+#!/bin/bash
+
+
+mv ~/xinitrc.log{,.old} 2>/dev/null
+exec > ~/xinitrc.log 2>&1
+set -x; shopt -s extglob nullglob
+IFS=$'\n'
+
+
+mkdir -p ~/run/lock
+
+
+cleanup () {
+
+    old=( ~/run/* )
+    [[ -n ${old} ]] &&
+        echo "${old[*]}" &&
+        rm -f "${old[@]}"
+
+    xrandr --output DVI-0 --off --output DVI-1 --off
+    xrandr --output DVI-0 --auto --output DVI-1 --auto
+
+} >&2
+trap 'cleanup' INT TERM EXIT
+
+
+#xrandr --output DVI-0 --rotate left --auto --primary
+xrandr --output DVI-0 --rotate normal --auto --primary
+#xrandr --output DVI-1 --rotate right --auto --right-of DVI-0
+xrandr --output DVI-1 --off
+
+~/xconsole/bin/xconsole
+
+xterm -rv -fa 'Incon*' -fs 10 &
+xdotool \
+    search --sync --onlyvisible --classname xterm \
+    windowmove 683 0 \
+    windowsize 50% 95% \
+    windowfocus
+
+# flock --shared --nonblock --close ~/run/lock/client   #...clients
+# flock --exclusive ~/run/lock/client                   #...here
+set +x
+while sleep 2; do
+    [[ -e ~/run/kill ]] &&
+        set -x &&
+        rm -f ~/run/kill &&
+        break
+
+    clients=( ~/run/client-* )
+    [[ -z ${clients} ]] &&
+        set -x &&
+        break
+
+done
+
+
+# trip EXIT handler!
+exit 0
