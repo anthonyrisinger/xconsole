@@ -40,6 +40,7 @@ class Manager(object):
         self.event_map = mapo.record()
         self.window_map = mapo.record()
         self.device_map = mapo.record()
+        self.controller_map = mapo.record()
         self.connection = None
         #TODO: REMOVE
         self.x = int(x)
@@ -177,6 +178,21 @@ class Manager(object):
 
         #TODO: XISetClientPointerChecked
 
+    def on_xge_13(self, event):
+        self.next_controller((event.deviceid, 0)).on_raw_key_press(event)
+
+    def on_xge_14(self, event):
+        self.next_controller((event.deviceid, 0)).on_raw_key_release(event)
+
+    def next_controller(self, key):
+        last_controller = self.controller_map.get((0, 0))
+        next_controller = self.controller_map.get(key) or Controller(self, key)
+        if last_controller and last_controller != next_controller:
+            last_controller.on_focus_out(next_controller)
+        next_controller.on_focus_in(last_controller)
+        self.controller_map[(0, 0)] = next_controller
+        return next_controller
+
     def main_loop(self):
         self.sink_events()
         self.refresh_devices()
@@ -202,9 +218,8 @@ class Manager(object):
             #from IPython import embed as I; I()
 
             if isinstance(event, xproto.GeGenericEvent):
-                #...could be one of numerous events, but in this case
-                # we know it's a HierarchyChangeEvent
-                self.refresh_devices()
+                fun = getattr(self, 'on_xge_{}'.format(event.xgevent), None)
+                fun and fun(event)
             elif isinstance(event, xproto.MapRequestEvent):
                 self.conn.core.MapWindowChecked(event.window).check()
             elif isinstance(event, xproto.ConfigureRequestEvent):
@@ -276,6 +291,42 @@ class Manager(object):
                     pass
 
         conn.disconnect()
+
+
+class Controller(object):
+
+    def __init__(self, manager, key=None):
+        self.manager = manager
+        self.key = key
+
+    @property
+    def key(self):
+        return self._key
+
+    @key.setter
+    def key(self, k):
+        if not k:
+            return
+
+        k = self._key = tuple(map(int, k))
+        for alt_k in (k, (k[0], 0), (0, k[1])):
+            if sum(alt_k) > 0:
+                self.manager.controller_map[alt_k] = self
+
+    def __repr__(self):
+        return '<{self.__class__.__name__}: {self.key}>'.format(self=self)
+
+    def on_raw_key_press(self, event):
+        logger.debug(('raw_key_press', self, event))
+
+    def on_raw_key_release(self, event):
+        logger.debug(('raw_key_release', self, event))
+
+    def on_focus_in(self, last_controller=None):
+        logger.debug(('focus_in', self, last_controller))
+
+    def on_focus_out(self, next_controller=None):
+        logger.debug(('focus_out', self, next_controller))
 
 
 class Port(object):
