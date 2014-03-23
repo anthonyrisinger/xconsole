@@ -19,12 +19,18 @@ from pprint import (
     pprint as pp,
     )
 
+import mapo
+import time
+from datetime import datetime
+
 import logging
 logging.basicConfig()
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-
-import mapo
+logger.setLevel(logging.INFO)
+logger.info(
+    '\n%s\n%16s: init: %s\n%s', *(
+        '-'*64, __name__, datetime.now(), '-'*64,
+        ))
 
 
 # (reverse) http://stackoverflow.com/questions/8638792
@@ -76,9 +82,11 @@ class Manager(object):
         self.conn.xinput.XISelectEvents(
             self.root.root, [
                 (xinput.Device.All, (
-                    xinput.XIEventMask.Hierarchy |
-                    xinput.XIEventMask.RawKeyPress |
-                    xinput.XIEventMask.RawKeyRelease
+                    xinput.XIEventMask.Hierarchy
+                    | xinput.XIEventMask.RawKeyPress
+                    | xinput.XIEventMask.RawKeyRelease
+                    | xinput.XIEventMask.RawButtonPress
+                    | xinput.XIEventMask.RawButtonRelease
                     )),
                 ])
 
@@ -179,17 +187,39 @@ class Manager(object):
         #TODO: XISetClientPointerChecked
 
     def on_xge_13(self, event):
-        self.next_controller((event.deviceid, 0)).on_raw_key_press(event)
+        devid = event.deviceid
+        devtype = self.device_map[devid].type
+        if not devtype == xinput.DeviceType.MasterKeyboard:
+            self.next_controller((devid, 0)).on_raw_key_press(event)
 
     def on_xge_14(self, event):
-        self.next_controller((event.deviceid, 0)).on_raw_key_release(event)
+        devid = event.deviceid
+        devtype = self.device_map[devid].type
+        if not devtype == xinput.DeviceType.MasterKeyboard:
+            self.next_controller((devid, 0)).on_raw_key_release(event)
+
+    def on_xge_15(self, event):
+        devid = event.deviceid
+        devtype = self.device_map[devid].type
+        if not devtype == xinput.DeviceType.MasterKeyboard:
+            self.next_controller((devid, 0)).on_raw_key_release(event)
+
+    def on_xge_16(self, event):
+        devid = event.deviceid
+        devtype = self.device_map[devid].type
+        if devtype not in (
+            xinput.DeviceType.MasterPointer,
+            xinput.DeviceType.MasterKeyboard,
+            ):
+            self.next_controller((devid, 0)).on_raw_key_release(event)
 
     def next_controller(self, key):
         last_controller = self.controller_map.get((0, 0))
         next_controller = self.controller_map.get(key) or Controller(self, key)
-        if last_controller and last_controller != next_controller:
-            last_controller.on_focus_out(next_controller)
-        next_controller.on_focus_in(last_controller)
+        if last_controller != next_controller:
+            if last_controller:
+                last_controller.on_focus_out(next_controller)
+            next_controller.on_focus_in(last_controller)
         self.controller_map[(0, 0)] = next_controller
         return next_controller
 
@@ -232,7 +262,7 @@ class Manager(object):
                     64,
                     ).reply()
                 wm_class = ''.join(map(chr, wm_class.value))
-                logger.debug('wm_class: %r', wm_class)
+                #logger.info('wm_class: %r', wm_class)
                 if wm_class.startswith('Minecraft'):
                     self.window_map[event.window] = mapo.record(vars(
                         conn.core.GetWindowAttributes(event.window).reply()
@@ -295,9 +325,16 @@ class Manager(object):
 
 class Controller(object):
 
+
+
     def __init__(self, manager, key=None):
+        self.atoms = mapo.record()
         self.manager = manager
         self.key = key
+        self.keycodes = mapo.record(
+            need = {37, 50},
+            want = {37, 50},
+            )
 
     @property
     def key(self):
@@ -317,16 +354,17 @@ class Controller(object):
         return '<{self.__class__.__name__}: {self.key}>'.format(self=self)
 
     def on_raw_key_press(self, event):
-        logger.debug(('raw_key_press', self, event))
+        self.keycodes.want -= {event.detail}
 
     def on_raw_key_release(self, event):
-        logger.debug(('raw_key_release', self, event))
+        if event.detail in self.keycodes.need:
+            self.keycodes.want |= {event.detail}
 
     def on_focus_in(self, last_controller=None):
-        logger.debug(('focus_in', self, last_controller))
+        self.keycodes.want |= self.keycodes.need
 
     def on_focus_out(self, next_controller=None):
-        logger.debug(('focus_out', self, next_controller))
+        self.keycodes.want |= self.keycodes.need
 
 
 class Port(object):
@@ -391,45 +429,47 @@ class Reply(_xcb.Reply):
 class Event(_xcb.Event):
 
     __xge__ = mapo.automap()
-    __xge__[131][11] = (
-        'xx2x4x2xHIIH10x', (
-            'deviceid',
-            'time',
-            'flags',
-            'num_infos',
-            ))
-    __xge__[131][13] = (
-        'xx2x4x2xHIIHHI4x', (
-            'deviceid',
-            'time',
-            'detail',
-            'sourceid',
-            'valuators_len',
-            'flags',
-            ))
-    __xge__[131][14] = (
-        'xx2x4x2xHIIHHI4x', (
-            'deviceid',
-            'time',
-            'detail',
-            'sourceid',
-            'valuators_len',
-            'flags',
-            ))
+    __xge__[131][11]['xx2x4x2xHIIH10x'].update({
+        0: 'deviceid',
+        1: 'time',
+        2: 'flags',
+        3: 'num_infos',
+        })
+    __xge__[131][13]['xx2x4x2xHIIHHI4x'].update({
+        0: 'deviceid',
+        1: 'time',
+        2: 'detail',
+        3: 'sourceid',
+        4: 'valuators_len',
+        5: 'flags',
+        })
+    __xge__[131][14] = __xge__[131][13]
+    __xge__[131][15] = __xge__[131][13]
+    __xge__[131][16] = __xge__[131][13]
 
     def __init__(self, parent, *args):
         _xcb.Event.__init__(self, parent, *args)
         cls = self.__class__
-        ns = mapo.record(xgevent=None)
+        ns = mapo.record()
         ns.response_type, ns.extension = (
             struct.unpack_from('=BB', parent)
             )
+
         if ns.response_type == 35 and ns.extension in cls.__xge__:
             (ns.xgevent,) = struct.unpack_from('=8xH', parent)
-            fmt, attrs = cls.__xge__[ns.extension].get(ns.xgevent, ('', []))
-            ns.update(zip(attrs, struct.unpack_from(fmt, parent)))
+            fmt = str()
+            attrs = list()
+            info = cls.__xge__[ns.extension][ns.xgevent]
+            if info:
+                (fmt, attrs), = info.viewitems()
+                ns.update(zip(
+                    (attrs[i] for i in range(len(attrs))),
+                    struct.unpack_from(fmt, parent),
+                    ))
+
         for key, attr in ns.iteritems():
             setattr(self, key, attr)
+
         return self
 
 #...BEFORE core/extension import!
