@@ -186,46 +186,49 @@ class Manager(object):
 
         #TODO: XISetClientPointerChecked
 
-    def on_xge_13(self, event):
-        devid = event.deviceid
-        devtype = self.device_map[devid].type
-        if not devtype == xinput.DeviceType.MasterKeyboard:
-            self.next_controller((devid, 0)).on_raw_key_press(event)
+    def on_xge(self, event):
+        eventmap = {
+            13: 'on_raw_key_press',
+            14: 'on_raw_key_release',
+            15: 'on_raw_button_press',
+            16: 'on_raw_button_release',
+            }
+        if event.xgevent not in eventmap:
+            return
 
-    def on_xge_14(self, event):
-        devid = event.deviceid
-        devtype = self.device_map[devid].type
-        if not devtype == xinput.DeviceType.MasterKeyboard:
-            self.next_controller((devid, 0)).on_raw_key_release(event)
-
-    def on_xge_15(self, event):
-        devid = event.deviceid
-        devtype = self.device_map[devid].type
-        if not devtype == xinput.DeviceType.MasterKeyboard:
-            self.next_controller((devid, 0)).on_raw_key_release(event)
-
-    def on_xge_16(self, event):
-        devid = event.deviceid
-        devtype = self.device_map[devid].type
-        if devtype not in (
+        device = self.device_map[event.deviceid]
+        if device.type not in (
             xinput.DeviceType.MasterPointer,
             xinput.DeviceType.MasterKeyboard,
             ):
-            self.next_controller((devid, 0)).on_raw_key_release(event)
+            key = (device.deviceid, 0)
+            if 1 in device.classes:
+                key = (0, device.deviceid)
+            controller = self.next_controller(key)
+            handler = getattr(controller, eventmap[event.xgevent], None)
+            if handler:
+                return handler(event)
 
     def next_controller(self, key):
         last_controller = self.controller_map.get((0, 0))
-        next_controller = self.controller_map.get(key) or Controller(self, key)
+        next_controller = self.controller_map.get(key)
+        if key[0] == 0:
+            return last_controller
+
+        if not next_controller and key[0] != 0:
+            next_controller = Controller(self, key)
         if last_controller != next_controller:
             if last_controller:
                 last_controller.on_focus_out(next_controller)
             next_controller.on_focus_in(last_controller)
-        self.controller_map[(0, 0)] = next_controller
+        if next_controller:
+            self.controller_map[(0, 0)] = next_controller
         return next_controller
 
     def main_loop(self):
         self.sink_events()
         self.refresh_devices()
+        logger.info(pf(self.device_map, width=1))
 
         while True:
             try:
@@ -248,8 +251,7 @@ class Manager(object):
             #from IPython import embed as I; I()
 
             if isinstance(event, xproto.GeGenericEvent):
-                fun = getattr(self, 'on_xge_{}'.format(event.xgevent), None)
-                fun and fun(event)
+                self.on_xge(event)
             elif isinstance(event, xproto.MapRequestEvent):
                 self.conn.core.MapWindowChecked(event.window).check()
             elif isinstance(event, xproto.ConfigureRequestEvent):
@@ -325,8 +327,6 @@ class Manager(object):
 
 class Controller(object):
 
-
-
     def __init__(self, manager, key=None):
         self.atoms = mapo.record()
         self.manager = manager
@@ -354,16 +354,41 @@ class Controller(object):
         return '<{self.__class__.__name__}: {self.key}>'.format(self=self)
 
     def on_raw_key_press(self, event):
+        logger.info(
+            'on_raw_key_press: %s %s',
+            self, event.detail,
+            )
         self.keycodes.want -= {event.detail}
 
     def on_raw_key_release(self, event):
+        logger.info(
+            'on_raw_key_release: %s %s',
+            self, event.detail,
+            )
         if event.detail in self.keycodes.need:
             self.keycodes.want |= {event.detail}
 
+    def on_raw_button_press(self, event):
+        logger.info(
+            'on_raw_button_press: %s %s %s',
+            self, event.detail, event.deviceid,
+            )
+        if self.key[1] == 0 and not self.keycodes.want:
+            self.key = (self.key[0], event.deviceid)
+            logger.info('paired: %s', self)
+
+    def on_raw_button_release(self, event):
+        logger.info(
+            'on_raw_button_release: %s %s %s',
+            self, event.detail, event.deviceid,
+            )
+
     def on_focus_in(self, last_controller=None):
+        logger.info('on_focus_in: %s', self)
         self.keycodes.want |= self.keycodes.need
 
     def on_focus_out(self, next_controller=None):
+        logger.info('on_focus_out: %s', self)
         self.keycodes.want |= self.keycodes.need
 
 
@@ -429,20 +454,20 @@ class Reply(_xcb.Reply):
 class Event(_xcb.Event):
 
     __xge__ = mapo.automap()
-    __xge__[131][11]['xx2x4x2xHIIH10x'].update({
-        0: 'deviceid',
-        1: 'time',
-        2: 'flags',
-        3: 'num_infos',
-        })
-    __xge__[131][13]['xx2x4x2xHIIHHI4x'].update({
-        0: 'deviceid',
-        1: 'time',
-        2: 'detail',
-        3: 'sourceid',
-        4: 'valuators_len',
-        5: 'flags',
-        })
+    __xge__[131][11]['xx2x4x2xHIIH10x'].update(enumerate((
+        'deviceid',
+        'time',
+        'flags',
+        'num_infos',
+        )))
+    __xge__[131][13]['xx2x4x2xHIIHHI4x'].update(enumerate((
+        'deviceid',
+        'time',
+        'detail',
+        'sourceid',
+        'valuators_len',
+        'flags',
+        )))
     __xge__[131][14] = __xge__[131][13]
     __xge__[131][15] = __xge__[131][13]
     __xge__[131][16] = __xge__[131][13]
