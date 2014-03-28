@@ -215,7 +215,7 @@ class Manager(object):
         if key[0] == 0:
             return last_controller
 
-        if not next_controller and key[0] != 0:
+        if not next_controller:
             next_controller = Controller(self, key)
         if last_controller != next_controller:
             if last_controller:
@@ -226,8 +226,8 @@ class Manager(object):
         return next_controller
 
     def main_loop(self):
-        self.sink_events()
         self.refresh_devices()
+        self.sink_events()
         logger.info(pf(self.device_map, width=1))
 
         while True:
@@ -328,7 +328,7 @@ class Manager(object):
 class Controller(object):
 
     def __init__(self, manager, key=None):
-        self.atoms = mapo.record()
+        self.atom = mapo.automap()
         self.manager = manager
         self.key = key
         self.keycodes = mapo.record(
@@ -375,6 +375,7 @@ class Controller(object):
             )
         if self.key[1] == 0 and not self.keycodes.want:
             self.key = (self.key[0], event.deviceid)
+            self.atom.PAIRED = True
             logger.info('paired: %s', self)
 
     def on_raw_button_release(self, event):

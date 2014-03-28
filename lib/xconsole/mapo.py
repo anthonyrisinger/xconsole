@@ -92,7 +92,7 @@ class feature(mapo):
 @mapo.feature(key='autoa')
 class feature(mapo):
     def __getattr__(self, key):
-        supr = super(self.type('autoa'), self)
+        supr = super(self.__class__.type('autoa'), self)
         try:
             return supr.__getattr__(key)
         except (KeyError, AttributeError):
@@ -102,7 +102,7 @@ class feature(mapo):
 @mapo.feature(key='autoi')
 class feature(mapo):
     def __missing__(self, key):
-        supr = super(self.type('autoi'), self)
+        supr = super(self.__class__.type('autoi'), self)
         try:
             return supr.__missing__(key)
         except (KeyError, AttributeError):
