@@ -1,6 +1,10 @@
 #!/bin/bash
 
 
+export PYTHONPATH=~/xconsole/lib #FIXME
+exec python2 -m xconsole.clients #FIXME
+
+
 mv ~/xinitrc.log{,.old} 2>/dev/null
 exec > ~/xinitrc.log 2>&1
 set -x; shopt -s extglob nullglob

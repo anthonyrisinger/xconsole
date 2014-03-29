@@ -40,19 +40,14 @@ def FP1616(v):
 
 class Manager(object):
 
-    def __init__(self, w, h, x, y, ptr, name):
-        self.name = name
+    def __init__(self, *args, **kwds):
         self.port_map = mapo.record()
+        self.title_map = mapo.record()
         self.event_map = mapo.record()
         self.window_map = mapo.record()
         self.device_map = mapo.record()
         self.controller_map = mapo.record()
         self.connection = None
-        #TODO: REMOVE
-        self.x = int(x)
-        self.y = int(y)
-        self.w = int(w)
-        self.h = int(h)
 
     @property
     def conn(self):
@@ -283,10 +278,9 @@ class Manager(object):
                         xproto.ConfigWindow.Height
                         )
                     x, y, w, h = ( #FIXME
-                        self.x,
-                        self.y,
-                        self.w,
-                        self.h,
+                        0, 0,
+                        self.root.width_in_pixels/2,
+                        self.root.height_in_pixels/2,
                         )
                     event.x = x
                     event.y = x
@@ -377,6 +371,12 @@ class Controller(object):
             self.key = (self.key[0], event.deviceid)
             self.atom.PAIRED = True
             logger.info('paired: %s', self)
+            from .title import minecraft
+            title = self.atom.TITLE = minecraft.get(self)
+            logger.info('starting: %s %s', self, title)
+            title.start()
+            self.atom.STARTED = True
+            logger.info('started: %s', self)
 
     def on_raw_button_release(self, event):
         logger.info(
@@ -583,6 +583,7 @@ xinput.xinputExtension.XIChangeHierarchyChecked = XIChangeHierarchyChecked
 
 
 if __name__ == '__main__':
+    __package__ = 'xconsole'
     manager = Manager(*sys.argv[1:])
     conn = manager.conn #FIXME
     manager.main_loop()
