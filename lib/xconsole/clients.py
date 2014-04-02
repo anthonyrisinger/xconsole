@@ -92,6 +92,7 @@ class Manager(object):
             for info in self.conn.xinput.XIQueryDevice(0).reply().infos
             )
 
+        existing = self.device_map.copy()
         while stack:
             #...reverse/depth-first allows for list deletes
             (key, attr), node = stack.pop()
@@ -122,6 +123,10 @@ class Manager(object):
 
             stack.extend((kv, attr) for kv in loop)
             node[key] = attr
+
+        return self.device_map - existing
+
+        #TODO: REMOVE BELOW...
 
         changes = list()
         slots = mapo.record()
@@ -306,17 +311,61 @@ class Controller(object):
 
     def __init__(self, manager, key=None):
         self.manager = manager
+        self.keym = None
         self.key = key
+        self.keycodes = mapo.record(
+            need = {37, 50},
+            want = {37, 50},
+            )
 
         self.atom = mapo.automap()
         self.atom.SLOT = len(set(
             self.manager.controller_map.values()
             ))
+        self.atom.NAME = 'xconsole:{}'.format(self.atom.SLOT)
 
-        self.keycodes = mapo.record(
-            need = {37, 50},
-            want = {37, 50},
-            )
+    @property
+    def keym(self):
+        logger.info('@keym: %s', self)
+        if self._key[1] == 0:
+            return None
+
+        if self.atom & {'MKBD', 'MPTR'}:
+            return self.atom.MKBD, self.atom.MPTR
+
+        changes = self.manager.refresh_devices()
+        self.manager.conn.xinput.XIChangeHierarchyChecked([(
+            xinput.HierarchyChangeType.AddMaster,
+            1, # send_core
+            1, # enable
+            #TODO: ^^^ disable by default?
+            self.atom.NAME,
+            )]).check()
+
+        changes = self.manager.refresh_devices()
+        for device in changes.values():
+            if device.type == xinput.DeviceType.MasterKeyboard:
+                self.atom.MKBD = device.deviceid
+            elif device.type == xinput.DeviceType.MasterPointer:
+                self.atom.MPTR = device.deviceid
+
+        #TODO: reattach after VT switch
+        self.manager.conn.xinput.XIChangeHierarchyChecked([
+            (xinput.HierarchyChangeType.AttachSlave,
+             self._key[0], self.atom.MKBD),
+            (xinput.HierarchyChangeType.AttachSlave,
+             self._key[1], self.atom.MPTR),
+            ]).check()
+
+        changes = self.manager.refresh_devices()
+        return self.atom.MKBD, self.atom.MPTR
+
+    @keym.setter
+    def keym(self, k):
+        if not k:
+            return
+
+        self.atom.MKBD, self.atom.MPTR = tuple(map(int, k))
 
     @property
     def key(self):
@@ -434,7 +483,7 @@ class Port(object):
         logger.info('_set_client_pointer: %s', self)
         self.manager.conn.xinput.XISetClientPointerChecked(
             self.window,
-            self.controller.key[0],
+            self.controller.keym[1],
             ).check()
 
     def _set_barrier(self):
@@ -451,10 +500,17 @@ class Port(object):
 
     def _set_pointer(self):
         logger.info('_set_pointer: %s', self)
+        w = self.manager.root.width_in_pixels/2 #FIXME
+        h = self.manager.root.height_in_pixels/2 #FIXME
+        logger.info('_set_pointer: %s', (
+            0, self.window, 0, 0, 0, 0,
+            w/2, h/2,
+            self.controller.keym[1],
+            ))
         self.manager.conn.xinput.XIWarpPointerChecked(
             0, self.window, 0, 0, 0, 0,
             FP1616(w/2), FP1616(h/2),
-            self.controller.mptr,
+            self.controller.keym[1],
             ).check()
 
     def _set_focus(self):
