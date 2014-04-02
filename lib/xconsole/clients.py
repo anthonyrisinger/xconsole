@@ -68,22 +68,27 @@ class Manager(object):
         return self.connection
 
     def sink_events(self):
+        ximask = (
+            xinput.XIEventMask.RawKeyPress
+            | xinput.XIEventMask.RawKeyRelease
+            | xinput.XIEventMask.RawButtonPress
+            | xinput.XIEventMask.RawButtonRelease
+            )
+        self.conn.xinput.XISelectEvents(
+            self.root.root, [
+                (device.deviceid, ximask)
+                for device in self.device_map.values()
+                if device.type not in (
+                    xinput.DeviceType.MasterPointer,
+                    xinput.DeviceType.MasterKeyboard,
+                    )
+                ])
         self.conn.core.ChangeWindowAttributesChecked(
             self.root.root, xproto.CW.EventMask, [
                 xproto.EventMask.SubstructureRedirect |
                 xproto.EventMask.SubstructureNotify
                 ]
             ).check()
-        self.conn.xinput.XISelectEvents(
-            self.root.root, [
-                (xinput.Device.All, (
-                    xinput.XIEventMask.Hierarchy
-                    | xinput.XIEventMask.RawKeyPress
-                    | xinput.XIEventMask.RawKeyRelease
-                    | xinput.XIEventMask.RawButtonPress
-                    | xinput.XIEventMask.RawButtonRelease
-                    )),
-                ])
 
     def refresh_devices(self):
         SOL = object()
@@ -128,6 +133,7 @@ class Manager(object):
 
     def on_xge(self, event):
         eventmap = {
+            1: 'on_device_changed',
             13: 'on_raw_key_press',
             14: 'on_raw_key_release',
             15: 'on_raw_button_press',
@@ -137,17 +143,18 @@ class Manager(object):
             return
 
         device = self.device_map[event.deviceid]
-        if device.type not in (
+        if device.type in (
             xinput.DeviceType.MasterPointer,
             xinput.DeviceType.MasterKeyboard,
             ):
-            key = (device.deviceid, 0)
-            if 1 in device.classes:
-                key = (0, device.deviceid)
-            controller = self.next_controller(key)
-            handler = getattr(controller, eventmap[event.xgevent], None)
-            if handler:
-                return handler(event)
+            device = self.device_map[event.sourceid]
+        key = (device.deviceid, 0)
+        if 1 in device.classes:
+            key = tuple(reversed(key))
+        controller = self.next_controller(key)
+        handler = getattr(controller, eventmap[event.xgevent], None)
+        if handler:
+            return handler(event)
 
     def next_controller(self, key):
         last_controller = self.controller_map.get((0, 0))
@@ -289,16 +296,23 @@ class Controller(object):
             elif device.type == xinput.DeviceType.MasterPointer:
                 self.atom.MPTR = device.deviceid
 
-        #TODO: reattach after VT switch
+        self._attach_devices()
+        changes = self.manager.refresh_devices()
+        return self.atom.MKBD, self.atom.MPTR
+
+    def _attach_devices(self):
+        logger.info('_attach_devices: %s', self)
         self.manager.conn.xinput.XIChangeHierarchyChecked([
             (xinput.HierarchyChangeType.AttachSlave,
              self._key[0], self.atom.MKBD),
             (xinput.HierarchyChangeType.AttachSlave,
              self._key[1], self.atom.MPTR),
             ]).check()
-
-        changes = self.manager.refresh_devices()
-        return self.atom.MKBD, self.atom.MPTR
+        self.manager.conn.xinput.XISelectEvents(
+            self.manager.root.root, [
+                (self.atom.MKBD, xinput.XIEventMask.DeviceChanged),
+                (self.atom.MPTR, xinput.XIEventMask.DeviceChanged),
+                ])
 
     @keym.setter
     def keym(self, k):
@@ -321,8 +335,25 @@ class Controller(object):
             if sum(alt_k) > 0:
                 self.manager.controller_map[alt_k] = self
 
+        if 0 not in k:
+            self.unsink_events()
+
     def __repr__(self):
         return '<{self.__class__.__name__}: {self.key}>'.format(self=self)
+
+    def unsink_events(self):
+        self.manager.conn.xinput.XISelectEvents(
+            self.manager.root.root,
+            zip(self._key, (0, 0)),
+            )
+
+    def on_device_changed(self, event):
+        logger.info('on_device_changed: %s', self)
+        changes = self.manager.refresh_devices()
+        mdev = self.manager.device_map[event.deviceid]
+        sdev = self.manager.device_map[event.sourceid]
+        if sdev.attachment != mdev.deviceid:
+            self._attach_devices()
 
     def on_raw_key_press(self, event):
         logger.info(
@@ -490,6 +521,13 @@ class Reply(_xcb.Reply):
 class Event(_xcb.Event):
 
     __xge__ = mapo.automap()
+    __xge__[131][1]['xx2x4x2xHIHHB11x'].update(enumerate((
+        'deviceid',
+        'time',
+        'num_classes',
+        'sourceid',
+        'reason',
+        )))
     __xge__[131][11]['xx2x4x2xHIIH10x'].update(enumerate((
         'deviceid',
         'time',
