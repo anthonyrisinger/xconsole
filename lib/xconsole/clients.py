@@ -220,6 +220,23 @@ class Manager(object):
             self.controller_map[(0, 0)] = next_controller
         return next_controller
 
+    def get_port(self, controller=None):
+        if controller is None:
+            #FIXME: only works for 1 controller
+            slot, controller = sorted(
+                (c.atom.SLOT, c)
+                for c in self.controller_map.values()
+                if c.atom.SLOT
+                )[0]
+        port = (
+            self.port_map.get(controller)
+            or self.port_map.setdefault(
+                controller,
+                Port(self, controller),
+                )
+            )
+        return port
+
     def main_loop(self):
         self.refresh_devices()
         self.sink_events()
@@ -248,44 +265,19 @@ class Manager(object):
             if isinstance(event, xproto.GeGenericEvent):
                 self.on_xge(event)
             elif isinstance(event, xproto.MapRequestEvent):
-                self.conn.core.MapWindowChecked(event.window).check()
+                port = self.window_map.get(event.window)
+                if port:
+                    port.on_map_request(event)
+                else:
+                    self.conn.core.MapWindowChecked(event.window).check()
             elif isinstance(event, xproto.ConfigureRequestEvent):
                 wm_class = self.conn.core.GetProperty(
-                    0,
-                    event.window,
-                    xproto.Atom.WM_CLASS,
-                    xproto.Atom.STRING,
-                    0,
-                    64,
+                    0, event.window, xproto.Atom.WM_CLASS,
+                    xproto.Atom.STRING, 0, 64,
                     ).reply()
                 wm_class = ''.join(map(chr, wm_class.value))
-                #logger.info('wm_class: %r', wm_class)
                 if wm_class.startswith('Minecraft'):
-                    self.window_map[event.window] = mapo.record(vars(
-                        conn.core.GetWindowAttributes(event.window).reply()
-                        ))
-                    port = Port(
-                        manager=self,
-                        window=event.window,
-                        )
-                    port.track()
-                    #TODO: delay Focus until Map...
-                    port.focus()
-                    event.value_mask |= (
-                        xproto.ConfigWindow.X |
-                        xproto.ConfigWindow.Y |
-                        xproto.ConfigWindow.Width |
-                        xproto.ConfigWindow.Height
-                        )
-                    x, y, w, h = ( #FIXME
-                        0, 0,
-                        self.root.width_in_pixels/2,
-                        self.root.height_in_pixels/2,
-                        )
-                    event.x = x
-                    event.y = x
-                    event.width = w
-                    event.height = h
+                    event = self.get_port().on_configure_request(event)
                 if event.border_width > 0:
                     event.value_mask |= xproto.ConfigWindow.BorderWidth
                     event.border_width = 0
@@ -306,15 +298,6 @@ class Manager(object):
                             key.title().replace('_', ''),
                             )
                         )).check()
-            elif isinstance(event, xproto.EnterNotifyEvent):
-                pass
-            elif isinstance(event, xproto.LeaveNotifyEvent):
-                try:
-                    self.conn.xinput.XIWarpPointerChecked(
-                        0, xid, 0, 0, 0, 0, FP1616(w/2), FP1616(h/2), ptr,
-                        ).check()
-                except Exception as e:
-                    pass
 
         conn.disconnect()
 
@@ -322,9 +305,14 @@ class Manager(object):
 class Controller(object):
 
     def __init__(self, manager, key=None):
-        self.atom = mapo.automap()
         self.manager = manager
         self.key = key
+
+        self.atom = mapo.automap()
+        self.atom.SLOT = len(set(
+            self.manager.controller_map.values()
+            ))
+
         self.keycodes = mapo.record(
             need = {37, 50},
             want = {37, 50},
@@ -395,31 +383,82 @@ class Controller(object):
 
 class Port(object):
 
-    def __init__(self, manager, window=None, device=None):
+    def __init__(self, manager, controller=None, wid=None):
+        self.atom = mapo.automap()
         self.manager = manager
-        self.window = window
-        self.device = device
-        self.manager.port_map[(window, device)] = self
+        self.controller = controller
+        self.window = wid
 
-    def track(self):
+    @property
+    def window(self):
+        return self.wid
+
+    @window.setter
+    def window(self, wid):
+        if not wid:
+            #TODO: handle set to None (remove from maps)
+            return
+
+        wid = self.wid = int(wid)
+        self.manager.window_map[wid] = self
+
+    def on_configure_request(self, event):
+        logger.info('on_configure_request: %s', self)
+        self.window = event.window
+        event.value_mask |= (
+            xproto.ConfigWindow.X |
+            xproto.ConfigWindow.Y |
+            xproto.ConfigWindow.Width |
+            xproto.ConfigWindow.Height
+            )
+        x, y, w, h = ( #FIXME
+            0, 0,
+            self.manager.root.width_in_pixels/2,
+            self.manager.root.height_in_pixels/2,
+            )
+        event.x = x
+        event.y = x
+        event.width = w
+        event.height = h
+        return event
+
+    def on_map_request(self, event):
+        logger.info('on_map_request: %s', self)
+        self.manager.conn.core.MapWindowChecked(event.window).check()
+        self._set_client_pointer()
+        self._set_barrier()
+        self._set_pointer()
+        self._set_focus()
+
+    def _set_client_pointer(self):
+        logger.info('_set_client_pointer: %s', self)
+        self.manager.conn.xinput.XISetClientPointerChecked(
+            self.window,
+            self.controller.key[0],
+            ).check()
+
+    def _set_barrier(self):
+        logger.info('_set_barrier: %s', self)
+        #TODO: impl XFIXES
         mask = (
             xproto.EventMask.EnterWindow |
             xproto.EventMask.LeaveWindow |
             xproto.EventMask.FocusChange
             )
-
         self.manager.conn.core.ChangeWindowAttributesChecked(
-            self.window,
-            xproto.CW.EventMask,
-            [mask],
+            self.window, xproto.CW.EventMask, [mask],
             ).check()
 
-        #self.manager.conn.xinput.XISetClientPointerChecked(
-        #    self.window,
-        #    self.device,
-        #    ).check()
+    def _set_pointer(self):
+        logger.info('_set_pointer: %s', self)
+        self.manager.conn.xinput.XIWarpPointerChecked(
+            0, self.window, 0, 0, 0, 0,
+            FP1616(w/2), FP1616(h/2),
+            self.controller.mptr,
+            ).check()
 
-    def focus(self):
+    def _set_focus(self):
+        logger.info('_set_focus: %s', self)
         focus_event = struct.pack('BB2xIB23x', 9, 0, self.window, 0)
         self.manager.conn.core.SendEventChecked(
             0,
