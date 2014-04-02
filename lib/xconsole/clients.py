@@ -126,66 +126,6 @@ class Manager(object):
 
         return self.device_map - existing
 
-        #TODO: REMOVE BELOW...
-
-        changes = list()
-        slots = mapo.record()
-        name_re = re.compile('xconsole:([0-9]+)(?! XTEST)')
-        for k, v in self.device_map.iteritems():
-            match = name_re.match(v.name)
-            if match:
-                key = int(match.group(1))
-                slot = slots[key] = slots.get(key) or [None] * 4
-                offset = v.type - 1
-                if v.type == 5:
-                    offset -= sum(v.classes & {0, 1}, 1)
-                slot[offset] = v
-
-        for key, slot in slots.iteritems():
-            mptr, mkbd, sptr, skbd = slot
-            if None in (mptr, mkbd):
-                #...missing mdev(s)
-                mdname = 'xconsole:{}'.format(key)
-                changes.append((
-                    xinput.HierarchyChangeType.AddMaster,
-                    1, # send_core
-                    0, # enable
-                    mdname,
-                    ))
-            elif 0 in (mptr.enabled, mkbd.enabled):
-                #...mdev(s) disabled; FLOAT all sdevs
-                for sd in (sptr, skbd):
-                    if sd.type != xinput.DeviceType.FloatingSlave:
-                        changes.append((
-                            xinput.HierarchyChangeType.DetachSlave,
-                            sd.deviceid,
-                            ))
-                #for d in slot:
-                #    self.conn.xinput.XIChangePropertyChecked(
-                #        d.deviceid,
-                #        xproto.PropMode.Replace,
-                #        8, # "8Bit"
-                #        143, # "Device Enabled"
-                #        xproto.Atom.INTEGER,
-                #        [0],
-                #        ).check()
-            elif None not in slot:
-                #...devices exist, enable/assoc
-                for md, sd in (slot[0::2], slot[1::2]):
-                    if sd.attachment != md.deviceid:
-                        changes.append((
-                            xinput.HierarchyChangeType.AttachSlave,
-                            sd.deviceid,
-                            md.deviceid,
-                            ))
-
-        if changes:
-            #NOTE: sdevs either re-enabled on VT switch or re-assoc, DGAF :)
-            logger.debug('XIChangeHierarchy: %s', pf(changes, width=40))
-            self.conn.xinput.XIChangeHierarchyChecked(changes).check()
-
-        #TODO: XISetClientPointerChecked
-
     def on_xge(self, event):
         eventmap = {
             13: 'on_raw_key_press',
