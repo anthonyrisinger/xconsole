@@ -241,11 +241,10 @@ class Manager(object):
             if isinstance(event, xproto.GeGenericEvent):
                 self.on_xge(event)
             elif isinstance(event, xproto.MapRequestEvent):
+                self.conn.core.MapWindowChecked(event.window).check()
                 port = self.window_map.get(event.window)
                 if port:
                     port.on_map_request(event)
-                else:
-                    self.conn.core.MapWindowChecked(event.window).check()
             elif isinstance(event, xproto.ConfigureRequestEvent):
                 wm_class = self.conn.core.GetProperty(
                     0, event.window, xproto.Atom.WM_CLASS,
@@ -297,13 +296,13 @@ class Controller(object):
 
     @property
     def keym(self):
-        logger.info('@keym: %s', self)
         if self._key[1] == 0:
             return None
 
         if self.atom & {'MKBD', 'MPTR'}:
             return self.atom.MKBD, self.atom.MPTR
 
+        logger.info('@keym: %s', self)
         changes = self.manager.refresh_devices()
         self.manager.conn.xinput.XIChangeHierarchyChecked([(
             xinput.HierarchyChangeType.AddMaster,
@@ -378,9 +377,9 @@ class Controller(object):
         if not self.keym:
             return None
 
-        logger.info('on_hierarchy_changed: %s', self)
         if (self.skbd.attachment != self.mkbd.deviceid
             or self.sptr.attachment != self.mptr.deviceid):
+            logger.info('on_hierarchy_changed: %s', self)
             self._attach_devices()
 
     @property
