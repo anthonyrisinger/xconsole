@@ -498,11 +498,22 @@ class Port(object):
 
     def on_map_request(self, event):
         logger.info('on_map_request: %s', self)
-        self.manager.conn.core.MapWindowChecked(event.window).check()
+        #self._set_window_attributes()
         self._set_client_pointer()
         self._set_barrier()
         self._set_pointer()
         self._set_focus()
+
+    def _set_window_attributes(self):
+        logger.info('_set_window_attributes: %s', self)
+        mask = (
+            xproto.EventMask.EnterWindow |
+            xproto.EventMask.LeaveWindow |
+            xproto.EventMask.FocusChange
+            )
+        self.manager.conn.core.ChangeWindowAttributesChecked(
+            self.window, xproto.CW.EventMask, [mask],
+            ).check()
 
     def _set_client_pointer(self):
         logger.info('_set_client_pointer: %s', self)
