@@ -148,9 +148,10 @@ class Manager(object):
         if event.xgevent not in eventmap:
             return
 
+        attr = eventmap[event.xgevent]
+
         if event.xgevent == 11:
             self.refresh_devices()
-            attr = eventmap[event.xgevent]
             for controller in set(self.controller_map.values()):
                 handler = getattr(controller, attr, None)
                 if handler:
@@ -158,16 +159,13 @@ class Manager(object):
             return None
 
         device = self.device_map[event.deviceid]
-        if device.type in (
-            xinput.DeviceType.MasterPointer,
-            xinput.DeviceType.MasterKeyboard,
-            ):
+        if not attr.startswith('on_raw_') and hasattr(event, 'sourceid'):
             device = self.device_map[event.sourceid]
         key = (device.deviceid, 0)
         if 1 in device.classes:
             key = tuple(reversed(key))
         controller = self.next_controller(key)
-        handler = getattr(controller, eventmap[event.xgevent], None)
+        handler = getattr(controller, attr, None)
         if handler:
             return handler(event)
 
@@ -361,13 +359,37 @@ class Controller(object):
             zip(self._key, (0, 0)),
             )
 
-    def on_device_changed(self, event):
-        logger.info('on_device_changed: %s', self)
-        changes = self.manager.refresh_devices()
-        mdev = self.manager.device_map[event.deviceid]
-        sdev = self.manager.device_map[event.sourceid]
-        if sdev.attachment != mdev.deviceid:
+    def on_hierarchy_changed(self, event):
+        if not event.flags & xinput.HierarchyMask.DeviceEnabled:
+            return None
+
+        if not self.keym:
+            return None
+
+        logger.info('on_hierarchy_changed: %s', self)
+        if (self.skbd.attachment != self.mkbd.deviceid
+            or self.sptr.attachment != self.mptr.deviceid):
             self._attach_devices()
+
+    @property
+    def mkbd(self):
+        mkbd = self.manager.device_map[self.atom.MKBD]
+        return mkbd
+
+    @property
+    def mptr(self):
+        mptr = self.manager.device_map[self.atom.MPTR]
+        return mptr
+
+    @property
+    def skbd(self):
+        skbd = self.manager.device_map[self._key[0]]
+        return skbd
+
+    @property
+    def sptr(self):
+        sptr = self.manager.device_map[self._key[1]]
+        return sptr
 
     def on_raw_key_press(self, event):
         logger.info(
