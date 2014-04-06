@@ -133,6 +133,8 @@ class Minecraft(object):
         self.manager.title_map[key] = subprocess.Popen(
             args=self.cmdline.split('\0'),
             cwd=self.path,
+            stdout=open(os.devnull, 'wb'),
+            stderr=subprocess.STDOUT,
             )
 
     @property

@@ -27,6 +27,7 @@ import logging
 logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+#logger.setLevel(logging.DEBUG)
 logger.info(
     '\n%s\n%16s: init: %s\n%s', *(
         '-'*64, __name__, datetime.now(), '-'*64,
@@ -474,8 +475,8 @@ class Port(object):
         logger.info('_set_barrier: %s', self)
         #TODO: impl XFIXES
         mask = (
-            xproto.EventMask.EnterWindow |
-            xproto.EventMask.LeaveWindow |
+            #xproto.EventMask.EnterWindow |
+            #xproto.EventMask.LeaveWindow |
             xproto.EventMask.FocusChange
             )
         self.manager.conn.core.ChangeWindowAttributesChecked(
