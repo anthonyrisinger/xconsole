@@ -484,15 +484,14 @@ class Port(object):
             xproto.ConfigWindow.Width |
             xproto.ConfigWindow.Height
             )
-        x, y, w, h = ( #FIXME
-            0, 0,
+
+        #FIXME
+        event.x, event.y = self.atom.POS = (0, 0)
+        event.width, event.height = self.atom.DIM = (
             self.manager.root.width_in_pixels/2,
             self.manager.root.height_in_pixels/2,
             )
-        event.x = x
-        event.y = x
-        event.width = w
-        event.height = h
+
         return event
 
     def on_map_request(self, event):
@@ -523,15 +522,33 @@ class Port(object):
 
     def _set_barrier(self):
         logger.info('_set_barrier: %s', self)
-        #TODO: impl XFIXES
+        root = self.manager.root
+        x1, y1 = self.atom.POS
+        x2, y2 = map(sum, zip(self.atom.POS, self.atom.DIM))
+        rw, rh = root.width_in_pixels, root.height_in_pixels
         mask = (
-            #xproto.EventMask.EnterWindow |
-            #xproto.EventMask.LeaveWindow |
-            xproto.EventMask.FocusChange
+            xfixes.BarrierDirections.PositiveX,
+            xfixes.BarrierDirections.PositiveY,
+            xfixes.BarrierDirections.NegativeX,
+            xfixes.BarrierDirections.NegativeY,
             )
-        self.manager.conn.core.ChangeWindowAttributesChecked(
-            self.window, xproto.CW.EventMask, [mask],
-            ).check()
+        for border, x, y, xx, yy, dirs in (
+            ('top',      0, y1, rw, y1, mask[1]),
+            ('right',   x2,  0, x2, rh, mask[2]),
+            ('bottom',   0, y2, rw, y2, mask[3]),
+            ('left',    x1,  0, x1, rh, mask[0]),
+            ):
+            atom = 'BARRIER_' + border.upper()
+            if atom in self.atom:
+                self.manager.conn.xfixes.DeletePointerBarrier(
+                    self.atom.pop(atom),
+                    )
+            bid = self.atom[atom] = self.manager.conn.generate_id()
+            self.manager.conn.xfixes.CreatePointerBarrierChecked(
+                bid, self.window,
+                x, y, xx, yy, dirs,
+                1, [self.controller.mptr.deviceid],
+                ).check()
 
     def _set_pointer(self):
         logger.info('_set_pointer: %s', self)
