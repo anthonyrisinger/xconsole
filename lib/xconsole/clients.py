@@ -486,11 +486,13 @@ class Port(object):
             )
 
         #FIXME
-        event.x, event.y = self.atom.POS = (0, 0)
-        event.width, event.height = self.atom.DIM = (
-            self.manager.root.width_in_pixels/2,
-            self.manager.root.height_in_pixels/2,
-            )
+        x = y = 0
+        w = self.manager.root.width_in_pixels/2
+        h = self.manager.root.height_in_pixels
+        if self.controller.atom.SLOT == 1:
+            x = w
+        event.x, event.y = self.atom.POS = (x, y)
+        event.width, event.height = self.atom.DIM = (w, h)
 
         return event
 
