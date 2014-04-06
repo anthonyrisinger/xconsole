@@ -83,6 +83,10 @@ class Manager(object):
                     xinput.DeviceType.MasterKeyboard,
                     )
                 ])
+        self.conn.xinput.XISelectEvents(
+            self.root.root, [
+                (xinput.Device.All, xinput.XIEventMask.Hierarchy),
+                ])
         self.conn.core.ChangeWindowAttributesChecked(
             self.root.root, xproto.CW.EventMask, [
                 xproto.EventMask.SubstructureRedirect |
@@ -134,6 +138,7 @@ class Manager(object):
     def on_xge(self, event):
         eventmap = {
             1: 'on_device_changed',
+            11: 'on_hierarchy_changed',
             13: 'on_raw_key_press',
             14: 'on_raw_key_release',
             15: 'on_raw_button_press',
@@ -141,6 +146,15 @@ class Manager(object):
             }
         if event.xgevent not in eventmap:
             return
+
+        if event.xgevent == 11:
+            self.refresh_devices()
+            attr = eventmap[event.xgevent]
+            for controller in set(self.controller_map.values()):
+                handler = getattr(controller, attr, None)
+                if handler:
+                    handler(event)
+            return None
 
         device = self.device_map[event.deviceid]
         if device.type in (
@@ -192,7 +206,6 @@ class Manager(object):
     def main_loop(self):
         self.refresh_devices()
         self.sink_events()
-        logger.info(pf(self.device_map, width=1))
 
         while True:
             try:
@@ -265,7 +278,7 @@ class Controller(object):
             want = {37, 50},
             )
 
-        self.atom = mapo.automap()
+        self.atom = mapo.record()
         self.atom.SLOT = len(set(
             self.manager.controller_map.values()
             ))
@@ -404,7 +417,7 @@ class Controller(object):
 class Port(object):
 
     def __init__(self, manager, controller=None, wid=None):
-        self.atom = mapo.automap()
+        self.atom = mapo.record()
         self.manager = manager
         self.controller = controller
         self.window = wid
@@ -473,11 +486,6 @@ class Port(object):
         logger.info('_set_pointer: %s', self)
         w = self.manager.root.width_in_pixels/2 #FIXME
         h = self.manager.root.height_in_pixels/2 #FIXME
-        logger.info('_set_pointer: %s', (
-            0, self.window, 0, 0, 0, 0,
-            w/2, h/2,
-            self.controller.keym[1],
-            ))
         self.manager.conn.xinput.XIWarpPointerChecked(
             0, self.window, 0, 0, 0, 0,
             FP1616(w/2), FP1616(h/2),
