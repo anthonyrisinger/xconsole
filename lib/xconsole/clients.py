@@ -42,6 +42,7 @@ def FP1616(v):
 class Manager(object):
 
     def __init__(self, *args, **kwds):
+        self.atom = mapo.record()
         self.port_map = mapo.record()
         self.title_map = mapo.record()
         self.event_map = mapo.record()
@@ -201,9 +202,21 @@ class Manager(object):
             )
         return port
 
+    def create_cursor(self):
+        fid = self.conn.generate_id()
+        cid = self.atom.CURSOR = self.conn.generate_id()
+        self.conn.core.OpenFontChecked(
+            fid, 6,'cursor',
+            ).check()
+        self.conn.core.CreateGlyphCursorChecked(
+            cid, fid, fid, 30, 30, 0, 0, 0, 0, 0, 0,
+            ).check()
+        self.conn.core.CloseFontChecked(fid).check()
+
     def main_loop(self):
         self.refresh_devices()
         self.sink_events()
+        self.create_cursor()
 
         while True:
             try:
@@ -372,12 +385,12 @@ class Controller(object):
 
     @property
     def mkbd(self):
-        mkbd = self.manager.device_map[self.atom.MKBD]
+        mkbd = self.manager.device_map[self.keym[0]]
         return mkbd
 
     @property
     def mptr(self):
-        mptr = self.manager.device_map[self.atom.MPTR]
+        mptr = self.manager.device_map[self.keym[1]]
         return mptr
 
     @property
@@ -456,6 +469,10 @@ class Port(object):
         if not wid:
             #TODO: handle set to None (remove from maps)
             return
+
+        self.manager.conn.xinput.XIChangeCursorChecked(
+            wid, self.manager.atom.CURSOR, self.controller.mptr.deviceid,
+            ).check()
 
         wid = self.wid = int(wid)
         self.manager.window_map[wid] = self
