@@ -211,6 +211,9 @@ class Manager(object):
         self.conn.core.CreateGlyphCursorChecked(
             cid, fid, fid, 30, 30, 0, 0, 0, 0, 0, 0,
             ).check()
+        self.conn.core.ChangeWindowAttributesChecked(
+            self.root.root, xproto.CW.Cursor, [cid],
+            ).check()
         self.conn.core.CloseFontChecked(fid).check()
 
     def main_loop(self):
@@ -468,10 +471,6 @@ class Port(object):
         if not wid:
             #TODO: handle set to None (remove from maps)
             return
-
-        self.manager.conn.xinput.XIChangeCursorChecked(
-            wid, self.manager.atom.CURSOR, self.controller.mptr.deviceid,
-            ).check()
 
         wid = self.wid = int(wid)
         self.manager.window_map[wid] = self
