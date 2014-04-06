@@ -187,11 +187,10 @@ class Manager(object):
 
     def get_port(self, controller=None):
         if controller is None:
-            #FIXME: only works for 1 controller
             slot, controller = sorted(
                 (c.atom.SLOT, c)
                 for c in self.controller_map.values()
-                if c.atom.SLOT
+                if 'SLOT' in c.atom and 'PORT' not in c.atom
                 )[0]
         port = (
             self.port_map.get(controller)
@@ -280,7 +279,7 @@ class Controller(object):
         self.atom = mapo.record()
         self.atom.SLOT = len(set(
             self.manager.controller_map.values()
-            ))
+            )) - 1
         self.atom.NAME = 'xconsole:{}'.format(self.atom.SLOT)
 
     @property
@@ -443,6 +442,9 @@ class Port(object):
         self.atom = mapo.record()
         self.manager = manager
         self.controller = controller
+        if controller:
+            #TODO: handle better
+            controller.atom.PORT = self
         self.window = wid
 
     @property
