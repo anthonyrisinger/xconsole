@@ -108,21 +108,27 @@ def get(controller):
 
 class Minecraft(object):
 
-    version = '1.7.4'
-
     def __init__(self, controller):
         self.controller = controller
         #TODO:  hardcode by controller...?
         #       move to Controller?
-        self.username = 'emilyelese'
-        self.uuid = 'db9e09c06ad64afcb1512c6118ba2e41'
-        self.token = '8821254ece7d441ba2d041ad6c843acf'
-        self.path = os.path.expanduser(
-            '~/clients/{0}'.format(self.username),
+        self.username = 'zwr'
+
+        self.auth_player_name = self.username
+        self.auth_session = (
+            'token'
+            ':5ada5cd545f847b0b02ed59990ba3028'
+            ':3796104317d746fa92c0205a4dd57c30'
             )
-        self.path_version = self.path + '/versions'
-        self.path_assets = self.path + '/assets'
-        self.path_cp = self.path + '/libraries'
+
+        self.version_name = '1.6.4-Forge9.11.1.965'
+        self.game_directory = os.path.expanduser(
+            '~/clients/{0}/'.format(self.username),
+            )
+        self.game_assets = self.game_directory + 'assets/virtual/legacy/'
+        self.game_versions = self.game_directory + 'versions/'
+        self.game_libraries = self.game_directory + 'libraries/'
+        self.tweak_class = 'cpw.mods.fml.common.launcher.FMLTweaker'
 
     @property
     def manager(self):
@@ -130,9 +136,11 @@ class Minecraft(object):
 
     def start(self):
         key = self.controller.key
+        with open('/var/lib/minecraft/mc-1.6.4-args-new',mode='w') as fp:
+            fp.write(self.cmdline)
         self.manager.title_map[key] = subprocess.Popen(
             args=self.cmdline.split('\0'),
-            cwd=self.path,
+            cwd=self.game_directory,
             stdout=open(os.devnull, 'wb'),
             stderr=subprocess.STDOUT,
             )
@@ -161,88 +169,84 @@ class Minecraft(object):
             '\0-XX:+BindGCTaskThreadsToCPUs'
             '\0-Dsun.java2d.opengl=true'
             '\0-Dsun.java2d.pmoffscreen=true'
-            '\0-Djava.library.path={self.path_version}/'
-                '{self.version}/{self.version}-LOCK'
+            '\0-Djava.library.path={self.game_versions}/'
+                '{self.version_name}/{self.version_name}-LOCK'
             '\0-cp\0'
               #---------------------------------
-                '{self.path_cp}/java3d/'
-                    'vecmath/1.3.1/'
-                        'vecmath-1.3.1.jar'
-                ':{self.path_cp}/net/sf/trove4j/'
-                    'trove4j/3.0.3/'
-                        'trove4j-3.0.3.jar'
-                ':{self.path_cp}/com/ibm/icu/'
-                    'icu4j-core-mojang/51.2/'
-                        'icu4j-core-mojang-51.2.jar'
-                ':{self.path_cp}/net/sf/jopt-simple/'
+                '{self.game_libraries}net/minecraftforge/'
+                    'minecraftforge/9.11.1.965/'
+                        'minecraftforge-9.11.1.965.jar'
+                ':{self.game_libraries}net/minecraft/'
+                    'launchwrapper/1.8/'
+                        'launchwrapper-1.8.jar'
+                ':{self.game_libraries}org/ow2/asm/'
+                    'asm-all/4.1/'
+                        'asm-all-4.1.jar'
+                ':{self.game_libraries}org/scala-lang/'
+                    'scala-library/2.10.2/'
+                        'scala-library-2.10.2.jar'
+                ':{self.game_libraries}org/scala-lang/'
+                    'scala-compiler/2.10.2/'
+                        'scala-compiler-2.10.2.jar'
+                ':{self.game_libraries}lzma/'
+                    'lzma/0.0.1/'
+                        'lzma-0.0.1.jar'
+                ':{self.game_libraries}net/sf/jopt-simple/'
                     'jopt-simple/4.5/'
                         'jopt-simple-4.5.jar'
-                ':{self.path_cp}/com/paulscode/'
+                ':{self.game_libraries}com/paulscode/'
                     'codecjorbis/20101023/'
                         'codecjorbis-20101023.jar'
-                ':{self.path_cp}/com/paulscode/'
+                ':{self.game_libraries}com/paulscode/'
                     'codecwav/20101023/'
                         'codecwav-20101023.jar'
-                ':{self.path_cp}/com/paulscode/'
+                ':{self.game_libraries}com/paulscode/'
                     'libraryjavasound/20101123/'
                         'libraryjavasound-20101123.jar'
-                ':{self.path_cp}/com/paulscode/'
+                ':{self.game_libraries}com/paulscode/'
                     'librarylwjglopenal/20100824/'
                         'librarylwjglopenal-20100824.jar'
-                ':{self.path_cp}/com/paulscode/'
+                ':{self.game_libraries}com/paulscode/'
                     'soundsystem/20120107/'
                         'soundsystem-20120107.jar'
-                ':{self.path_cp}/io/netty/'
-                    'netty-all/4.0.10.Final/'
-                        'netty-all-4.0.10.Final.jar'
-                ':{self.path_cp}/com/google/guava/'
-                    'guava/15.0/'
-                        'guava-15.0.jar'
-                ':{self.path_cp}/org/apache/commons/'
+                ':{self.game_libraries}argo/'
+                    'argo/2.25_fixed/'
+                        'argo-2.25_fixed.jar'
+                ':{self.game_libraries}org/bouncycastle/'
+                    'bcprov-jdk15on/1.47/'
+                        'bcprov-jdk15on-1.47.jar'
+                ':{self.game_libraries}com/google/guava/'
+                    'guava/14.0/'
+                        'guava-14.0.jar'
+                ':{self.game_libraries}org/apache/commons/'
                     'commons-lang3/3.1/'
                         'commons-lang3-3.1.jar'
-                ':{self.path_cp}/commons-io/'
+                ':{self.game_libraries}commons-io/'
                     'commons-io/2.4/'
                         'commons-io-2.4.jar'
-                ':{self.path_cp}/net/java/jinput/'
+                ':{self.game_libraries}net/java/jinput/'
                     'jinput/2.0.5/'
                         'jinput-2.0.5.jar'
-                ':{self.path_cp}/net/java/jutils/'
+                ':{self.game_libraries}net/java/jutils/'
                     'jutils/1.0.0/'
                         'jutils-1.0.0.jar'
-                ':{self.path_cp}/com/google/code/gson/'
-                    'gson/2.2.4/'
-                        'gson-2.2.4.jar'
-                ':{self.path_cp}/com/mojang/'
-                    'authlib/1.2/'
-                        'authlib-1.2.jar'
-                ':{self.path_cp}/org/apache/logging/log4j/'
-                    'log4j-api/2.0-beta9/'
-                        'log4j-api-2.0-beta9.jar'
-                ':{self.path_cp}/org/apache/logging/log4j/'
-                    'log4j-core/2.0-beta9/'
-                        'log4j-core-2.0-beta9.jar'
-                ':{self.path_cp}/org/lwjgl/lwjgl/'
-                    'lwjgl/2.9.1-nightly-20131120/'
-                        'lwjgl-2.9.1-nightly-20131120.jar'
-                ':{self.path_cp}/org/lwjgl/lwjgl/'
-                    'lwjgl_util/2.9.1-nightly-20131120/'
-                        'lwjgl_util-2.9.1-nightly-20131120.jar'
-                ':{self.path_cp}/tv/twitch/'
-                    'twitch/5.12/'
-                        'twitch-5.12.jar'
-                ':{self.path_version}/{self.version}/'
-                        '{self.version}.jar'
+                ':{self.game_libraries}com/google/code/gson/'
+                    'gson/2.2.2/'
+                        'gson-2.2.2.jar'
+                ':{self.game_libraries}org/lwjgl/lwjgl/'
+                    'lwjgl/2.9.0/'
+                        'lwjgl-2.9.0.jar'
+                ':{self.game_libraries}org/lwjgl/lwjgl/'
+                    'lwjgl_util/2.9.0/'
+                        'lwjgl_util-2.9.0.jar'
+                ':{self.game_versions}{self.version_name}/'
+                        '{self.version_name}.jar'
             #---------------------------------
-            '\0net.minecraft.client.main.Main'
+            '\0net.minecraft.launchwrapper.Launch'
             #---------------------------------
-            '\0--username\0{self.username}'
-            '\0--version\0{self.version}'
-            '\0--gameDir\0{self.path}'
-            '\0--assetsDir\0{self.path_assets}'
-            '\0--assetIndex\0{self.version}'
-            '\0--uuid\0{self.uuid}'
-            '\0--accessToken\0{self.token}'
-            '\0--userProperties\0{{}}'
-            '\0--userType\0mojang'
+            '\0--session\0{self.auth_session}'
+            '\0--version\0{self.version_name}'
+            '\0--gameDir\0{self.game_directory}'
+            '\0--assetsDir\0{self.game_assets}'
+            '\0--tweakClass\0{self.tweak_class}'
         ).format(self=self)
