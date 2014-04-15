@@ -249,4 +249,6 @@ class Minecraft(object):
             '\0--gameDir\0{self.game_directory}'
             '\0--assetsDir\0{self.game_assets}'
             '\0--tweakClass\0{self.tweak_class}'
+            '\0--width\0{self.controller.port.w}'
+            '\0--height\0{self.controller.port.h}'
         ).format(self=self)

@@ -188,11 +188,18 @@ class Manager(object):
 
     def get_port(self, event=None, controller=None):
         logger.info(self.controller_map)
+        if event is not None:
+            port = self.window_map.get(
+                getattr(event, 'window', None),
+                )
+            if port is not None:
+                return port
+
         if controller is None:
             slot, controller = sorted(
                 (c.atom.SLOT, c)
                 for c in self.controller_map.values()
-                if 'SLOT' in c.atom and 'PORT' not in c.atom
+                if 'SLOT' in c.atom and 'FRAME' not in c.atom
                 )[0]
         port = (
             self.port_map.get(controller)
@@ -250,39 +257,45 @@ class Manager(object):
                 if port:
                     port.on_map_request(event)
             elif isinstance(event, xproto.ConfigureRequestEvent):
+                port = self.get_port(event)
+                if port:
+                    event.value_mask |= (
+                        xproto.ConfigWindow.X |
+                        xproto.ConfigWindow.Y |
+                        xproto.ConfigWindow.Width |
+                        xproto.ConfigWindow.Height
+                        )
+                    event.x, event.y = port.atom.POS
+                    event.width, event.height = port.atom.DIM
+                    if event.window not in port.atom.WID:
+                        port.window = event.window
+                    if 'FRAME' not in port.atom:
+                        port.window = self.conn.generate_id()
+                        self.conn.core.CreateWindowChecked(
+                            self.root.root_depth,
+                            port.window,
+                            self.root.root,
+                            port.atom.POS[0],
+                            port.atom.POS[1],
+                            port.atom.DIM[0],
+                            port.atom.DIM[1],
+                            0,
+                            xproto.WindowClass.InputOutput,
+                            self.root.root_visual,
+                            0, [],
+                            ).check()
+                        self.conn.core.MapWindowChecked(
+                            port.window,
+                            ).check()
+                        self.conn.core.ReparentWindowChecked(
+                            event.window,
+                            port.window,
+                            0, 0,
+                            ).check()
+                    event = port.on_configure_request(event)
                 if event.border_width > 0:
                     event.value_mask |= xproto.ConfigWindow.BorderWidth
                     event.border_width = 0
-                wm_class = self.conn.core.GetProperty(
-                    0, event.window, xproto.Atom.WM_CLASS,
-                    xproto.Atom.STRING, 0, 64,
-                    ).reply()
-                wm_class = ''.join(map(chr, wm_class.value))
-                if 1 or wm_class.startswith('Minecraft'):
-                    port = self.get_port(event)
-                    event = port.on_configure_request(event)
-                    port.window = self.conn.generate_id()
-                    self.conn.core.CreateWindowChecked(
-                        self.root.root_depth,
-                        port.window,
-                        self.root.root,
-                        port.atom.POS[0],
-                        port.atom.POS[1],
-                        port.atom.DIM[0],
-                        port.atom.DIM[1],
-                        0,
-                        xproto.WindowClass.InputOutput,
-                        self.root.root_visual,
-                        0, [],
-                        ).check()
-                    self.conn.core.ReparentWindowChecked(
-                        event.window,
-                        port.window,
-                        0, 0,
-                        ).check()
-                    self.conn.core.MapWindowChecked(
-                        port.window,
-                        ).check()
                 self.conn.core.ConfigureWindowChecked(
                     event.window, event.value_mask, list(
                         getattr(event, key)
@@ -320,6 +333,11 @@ class Controller(object):
             self.manager.controller_map.values()
             )) - 1
         self.atom.NAME = 'xconsole:{}'.format(self.atom.SLOT)
+        self.atom.PORT = Port(manager=manager, controller=self)
+
+    @property
+    def port(self):
+        return self.atom.get('PORT')
 
     @property
     def keym(self):
@@ -389,7 +407,16 @@ class Controller(object):
             self.unsink_events()
 
     def __repr__(self):
-        return '<{self.__class__.__name__}: {self.key}>'.format(self=self)
+        return (
+            '<{self.__class__.__name__}:'
+            ' {self.key}'
+            ' {self.atoms}'
+            '>'
+            ).format(self=self)
+
+    @property
+    def atoms(self):
+        return '|'.join(map(str, sorted(self.atom.iteritems())))
 
     def unsink_events(self):
         self.manager.conn.xinput.XISelectEvents(
@@ -479,6 +506,7 @@ class Port(object):
 
     def __init__(self, manager, controller=None, wid=None):
         self.atom = mapo.record()
+        self.atom.WID = list()
         self.manager = manager
         self.controller = controller
         if controller:
@@ -486,13 +514,50 @@ class Port(object):
             controller.atom.PORT = self
         self.window = wid
 
+        #FIXME
+        x = y = 0
+        w = manager.root.width_in_pixels/2
+        h = manager.root.height_in_pixels
+        if self.controller.atom.SLOT == 1:
+            x = w
+        self.atom.POS = (x, y)
+        self.atom.DIM = (w, h)
+
+    def __repr__(self):
+        return (
+            '<{self.__class__.__name__}:'
+            ' {self.controller.key}'
+            ' {self.atoms}'
+            '>'
+            ).format(self=self)
+
+    @property
+    def atoms(self):
+        return '|'.join(map(str, sorted(self.atom.iteritems())))
+
+    @property
+    def x(self):
+        return self.atom.get('POS', (None, None))[0]
+
+    @property
+    def x(self):
+        return self.atom.get('POS', (None, None))[0]
+
+    @property
+    def w(self):
+        return self.atom.get('DIM', (None, None))[0]
+
+    @property
+    def h(self):
+        return self.atom.get('DIM', (None, None))[1]
+
     @property
     def conn(self):
         return self.manager.conn
 
     @property
     def window(self):
-        return self.wid
+        return self.atom.WID[-1] if self.atom.WID else None
 
     @window.setter
     def window(self, wid):
@@ -500,28 +565,13 @@ class Port(object):
             #TODO: handle set to None (remove from maps)
             return
 
-        wid = self.wid = int(wid)
+        wid = int(wid)
+        self.atom.WID.append(wid)
         self.manager.window_map[wid] = self
 
     def on_configure_request(self, event):
         logger.info('on_configure_request: %s', self)
-        self.atom.WID_0 = event.window
-        event.value_mask |= (
-            xproto.ConfigWindow.X |
-            xproto.ConfigWindow.Y |
-            xproto.ConfigWindow.Width |
-            xproto.ConfigWindow.Height
-            )
-
-        #FIXME
-        x = y = 0
-        w = self.manager.root.width_in_pixels/2
-        h = self.manager.root.height_in_pixels
-        if self.controller.atom.SLOT == 1:
-            x = w
-        event.x, event.y = self.atom.POS = (x, y)
-        event.width, event.height = self.atom.DIM = (w, h)
-
+        self.atom.FRAME = self.window
         return event
 
     def on_map_request(self, event):
@@ -537,6 +587,15 @@ class Port(object):
         logger.info('_on_configure_window: %s', self)
         self.conn.core.ConfigureWindowChecked(
             self.window, (
+                xproto.ConfigWindow.X
+                | xproto.ConfigWindow.Y
+                | xproto.ConfigWindow.Width
+                | xproto.ConfigWindow.Height
+                ),
+            self.atom.POS + self.atom.DIM,
+            ).check()
+        self.conn.core.ConfigureWindowChecked(
+            self.atom.WID[0], (
                 xproto.ConfigWindow.X
                 | xproto.ConfigWindow.Y
                 | xproto.ConfigWindow.Width
@@ -605,10 +664,10 @@ class Port(object):
 
     def _set_focus(self):
         logger.info('_set_focus: %s', self)
-        focus_event = struct.pack('BB2xIB23x', 9, 0, self.atom.WID_0, 0)
+        focus_event = struct.pack('BB2xIB23x', 9, 0, self.atom.WID[0], 0)
         self.manager.conn.core.SendEventChecked(
             0,
-            self.atom.WID_0,
+            self.atom.WID[0],
             xproto.EventMask.FocusChange,
             focus_event,
             ).check()
