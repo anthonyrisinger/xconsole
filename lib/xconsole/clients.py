@@ -641,11 +641,11 @@ class Port(object):
             ).check()
 
     def _set_client_pointer(self):
-        logger.info('_set_client_pointer: %s', self)
-        self.manager.conn.xinput.XISetClientPointerChecked(
-            self.window,
-            self.controller.keym[1],
-            ).check()
+        for wid in self.atom.WID:
+            logger.info('_set_client_pointer: %s', self)
+            self.manager.conn.xinput.XISetClientPointerChecked(
+                wid, self.controller.keym[1],
+                ).check()
 
     def _set_barrier(self):
         logger.info('_set_barrier: %s', self)
