@@ -228,8 +228,8 @@ class Manager(object):
         return port
 
     def create_cursor(self):
-        fid = self.conn.generate_id()
-        cid = self.atom.CURSOR = self.conn.generate_id()
+        fid = xid(self.conn.generate_id())
+        cid = self.atom.CURSOR = xid(self.conn.generate_id())
         self.conn.core.OpenFontChecked(
             fid, 6,'cursor',
             ).check()
@@ -287,7 +287,7 @@ class Manager(object):
                     if event.window not in port.atom.WID:
                         port.window = event.window
                     if 'FRAME' not in port.atom:
-                        port.window = self.conn.generate_id()
+                        port.window = xid(self.conn.generate_id())
                         self.conn.core.CreateWindowChecked(
                             self.root.root_depth,
                             port.window,
@@ -670,7 +670,7 @@ class Port(object):
                 self.manager.conn.xfixes.DeletePointerBarrier(
                     self.atom.pop(atom),
                     )
-            bid = self.atom[atom] = self.manager.conn.generate_id()
+            bid = self.atom[atom] = xid(self.conn.generate_id())
             self.manager.conn.xfixes.CreatePointerBarrierChecked(
                 bid, self.window,
                 x, y, xx, yy, dirs,
