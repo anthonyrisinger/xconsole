@@ -39,6 +39,12 @@ def FP1616(v):
     return v * 65536.0
 
 
+class xid(int):
+
+    def __repr__(self):
+        return str(hex(self))
+
+
 class Manager(object):
 
     def __init__(self, *args, **kwds):
@@ -89,6 +95,7 @@ class Manager(object):
             self.root.root, [
                 (xinput.Device.All, xinput.XIEventMask.Hierarchy),
                 ])
+
         self.conn.core.ChangeWindowAttributesChecked(
             self.root.root, xproto.CW.EventMask, [
                 xproto.EventMask.SubstructureRedirect |
@@ -96,10 +103,18 @@ class Manager(object):
                 ]
             ).check()
 
+        import os
+        name = 'xconsole:{0}'.format(os.getpid())
+        self.conn.core.ChangePropertyChecked(
+            xproto.PropMode.Replace, self.root.root,
+            xproto.Atom.WM_NAME, xproto.Atom.STRING,
+            8, len(name), name,
+            ).check()
+
     def refresh_devices(self):
         SOL = object()
         stack = list(
-            ((info.deviceid, info), self.device_map)
+            ((xid(info.deviceid), info), self.device_map)
             for info in self.conn.xinput.XIQueryDevice(0).reply().infos
             )
 
@@ -116,6 +131,8 @@ class Manager(object):
                 attr = ''.join(map(chr, attr)).strip(' \t\n\r\0')
             elif key == 'classes':
                 attr = set(vc.type for vc in attr)
+            elif key == 'deviceid':
+                attr = xid(attr)
             elif hasattr(key, 'endswith'):
                 if (key in ('len', 'uninterpreted_data') or
                     key.startswith(('len_', 'num_')) or
@@ -283,6 +300,14 @@ class Manager(object):
                             xproto.WindowClass.InputOutput,
                             self.root.root_visual,
                             0, [],
+                            ).check()
+                        self.conn.core.ChangePropertyChecked(
+                            xproto.PropMode.Replace,
+                            port.window,
+                            xproto.Atom.WM_NAME,
+                            xproto.Atom.STRING,
+                            8, len(port.controller.atom.NAME),
+                            port.controller.atom.NAME,
                             ).check()
                         self.conn.core.MapWindowChecked(
                             port.window,
@@ -565,7 +590,7 @@ class Port(object):
             #TODO: handle set to None (remove from maps)
             return
 
-        wid = int(wid)
+        wid = xid(wid)
         self.atom.WID.append(wid)
         self.manager.window_map[wid] = self
 
