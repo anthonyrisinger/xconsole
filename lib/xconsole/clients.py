@@ -564,11 +564,20 @@ class Port(object):
     def __repr__(self):
         keys = ' '.join(sorted(map(str, self.atom)))
         return (
-            '<{self.__class__.__name__}:'
+            '<{self.__class__.__name__}[{self.ident}]:'
             ' {self.controller.key}'
             ' {keys}'
             '>'
             ).format(self=self, keys=keys)
+
+    @property
+    def ident(self, gen=__import__('itertools').count()):
+        ident = self.atom.get('IDENT')
+        if ident is not None:
+            return ident
+
+        ident = self.atom.IDENT = next(gen)
+        return ident
 
     @property
     def frame(self):
