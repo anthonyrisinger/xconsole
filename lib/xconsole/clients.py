@@ -217,19 +217,15 @@ class Manager(object):
                 return port
 
         if controller is None:
-            slot, controller = sorted(
+            avail = sorted(
                 (c.atom.SLOT, c)
-                for c in self.controller_map.values()
-                if 'SLOT' in c.atom and 'FRAME' not in c.atom
-                )[0]
-        port = (
-            self.port_map.get(controller)
-            or self.port_map.setdefault(
-                controller,
-                Port(self, controller),
+                for c in set(self.controller_map.values())
+                if 'SLOT' in c.atom and 'FRAME' not in c.port.atom
                 )
-            )
-        return port
+            if avail:
+                return avail[0][1].port
+
+        return None
 
     def create_cursor(self):
         fid = xid(self.conn.generate_id())
@@ -291,7 +287,7 @@ class Manager(object):
                     if event.window not in port.atom.WID:
                         port.window = event.window
                     if 'FRAME' not in port.atom:
-                        port.window = xid(self.conn.generate_id())
+                        port.window = port.frame
                         self.conn.core.CreateWindowChecked(
                             self.root.root_depth,
                             port.window,
@@ -368,6 +364,21 @@ class Controller(object):
     def port(self):
         return self.atom.get('PORT')
 
+    @port.setter
+    def port(self, new):
+        old = self.atom.get('PORT')
+        if old is new:
+            return
+
+        self.atom['PORT'] = new
+        self.manager.port_map[self.key] = self
+        self.manager.port_map[(self.key[0], 0)] = self
+        self.manager.port_map[(0, self.key[1])] = self
+        if old is not None:
+            self.manager.port_map.pop(old.key, None)
+            self.manager.port_map.pop((old.key[0], 0), None)
+            self.manager.port_map.pop((0, old.key[1]), None)
+
     @property
     def keym(self):
         if self._key[1] == 0:
@@ -436,12 +447,13 @@ class Controller(object):
             self.unsink_events()
 
     def __repr__(self):
+        keys = ' '.join(sorted(map(str, self.atom)))
         return (
             '<{self.__class__.__name__}:'
             ' {self.key}'
             ' {keys}'
             '>'
-            ).format(self=self, keys=tuple(self.atom))
+            ).format(self=self, keys=keys)
 
     @property
     def atoms(self):
@@ -534,13 +546,10 @@ class Controller(object):
 class Port(object):
 
     def __init__(self, manager, controller=None, wid=None):
-        self.atom = mapo.record()
-        self.atom.WID = list()
         self.manager = manager
         self.controller = controller
-        if controller:
-            #TODO: handle better
-            controller.atom.PORT = self
+        self.atom = mapo.record()
+        self.atom.WID = list()
         self.window = wid
 
         #FIXME
@@ -553,12 +562,22 @@ class Port(object):
         self.atom.DIM = (w, h)
 
     def __repr__(self):
+        keys = ' '.join(sorted(map(str, self.atom)))
         return (
             '<{self.__class__.__name__}:'
             ' {self.controller.key}'
             ' {keys}'
             '>'
-            ).format(self=self, keys=tuple(self.atom))
+            ).format(self=self, keys=keys)
+
+    @property
+    def frame(self):
+        frame = self.atom.get('FRAME')
+        if frame is not None:
+            return frame
+
+        frame = self.atom.FRAME = xid(self.conn.generate_id())
+        return frame
 
     @property
     def atoms(self):
@@ -600,7 +619,6 @@ class Port(object):
 
     def on_configure_request(self, event):
         logger.info('on_configure_request: %s', self)
-        self.atom.FRAME = self.window
         return event
 
     def on_map_request(self, event):
