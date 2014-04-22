@@ -709,21 +709,36 @@ _xcb = xcb.xcb
 xcb.__dict__.update(_xcb.__dict__)
 sys.modules['xcb.xcb'] = xcb
 
+class _repr(object):
+
+    def __repr__(self):
+        keys = [k for k in vars(self) if not k.startswith('__')]
+        minl = max(*map(len, keys)) + 2
+        fmt = ['<{self.__class__.__module__}.{self.__class__.__name__}(']
+        for k in sorted(keys):
+            tbc = '.' * (minl - len(k))
+            attr = getattr(self, k)
+            if isinstance(attr, xcb.List):
+                attr = list(attr)
+            fmt.append('{0} {1} {2}'.format(k, tbc, attr))
+        fmt.append(')>')
+        return '\n  '.join(fmt).format(self=self)
+
 #...save a copy of parent for manual unpacking
-class Struct(_xcb.Struct):
+class Struct(_repr, _xcb.Struct):
 
     def __init__(self, parent, *args):
         _xcb.Struct.__init__(self, parent, *args)
         self.__parent__ = parent
 
-class Reply(_xcb.Reply):
+class Reply(_repr, _xcb.Reply):
 
     def __init__(self, parent, *args):
         _xcb.Reply.__init__(self, parent, *args)
         self.__parent__ = parent
         self.response_type = struct.unpack_from('=B', parent)[0]
 
-class Event(_xcb.Event):
+class Event(_repr, _xcb.Event):
 
     __xge__ = mapo.automap()
     __xge__[131][1]['xx2x4x2xHIHHB11x'].update(enumerate((
