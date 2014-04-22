@@ -41,8 +41,10 @@ def FP1616(v):
 
 class xid(int):
 
-    def __repr__(self):
+    def __str__(self):
         return str(hex(self))
+
+    __repr__ = __str__
 
 
 class Manager(object):
@@ -437,9 +439,9 @@ class Controller(object):
         return (
             '<{self.__class__.__name__}:'
             ' {self.key}'
-            ' {self.atoms}'
+            ' {keys}'
             '>'
-            ).format(self=self)
+            ).format(self=self, keys=tuple(self.atom))
 
     @property
     def atoms(self):
@@ -554,9 +556,9 @@ class Port(object):
         return (
             '<{self.__class__.__name__}:'
             ' {self.controller.key}'
-            ' {self.atoms}'
+            ' {keys}'
             '>'
-            ).format(self=self)
+            ).format(self=self, keys=tuple(self.atom))
 
     @property
     def atoms(self):
@@ -712,14 +714,22 @@ sys.modules['xcb.xcb'] = xcb
 class _repr(object):
 
     def __repr__(self):
-        keys = [k for k in vars(self) if not k.startswith('__')]
+        keys = list(
+            k for k in vars(self)
+                if not k.startswith(('len_', 'num_', '__'))
+                    and not k.endswith(('_len', '_num'))
+            )
         minl = max(*map(len, keys)) + 2
         fmt = ['<{self.__class__.__module__}.{self.__class__.__name__}(']
         for k in sorted(keys):
             tbc = '.' * (minl - len(k))
             attr = getattr(self, k)
+            if k in ('window',):
+                attr = xid(attr)
             if isinstance(attr, xcb.List):
                 attr = list(attr)
+                if k in ('name',):
+                    attr = ''.join(map(chr, attr))
             fmt.append('{0} {1} {2}'.format(k, tbc, attr))
         fmt.append(')>')
         return '\n  '.join(fmt).format(self=self)
