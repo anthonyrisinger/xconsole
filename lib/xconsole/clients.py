@@ -63,10 +63,12 @@ class Manager(object):
             return self.connection
 
         conn = self.connection = xcb.connect()
+        conn.randr = conn(randr.key)
         conn.render = conn(render.key)
         conn.xfixes = conn(xfixes.key)
         conn.xinput = conn(xinput.key)
 
+        conn.randr.QueryVersion(1, 4).reply()
         conn.render.QueryVersion(0, 11).reply()
         conn.xfixes.QueryVersion(5, 0).reply()
         conn.xinput.XIQueryVersion(2, 3).reply()
@@ -780,10 +782,11 @@ xcb.Reply = Reply
 xcb.Event = Event
 
 from xcb import (
-    xproto,
+    randr,
     render,
-    xfixes,
     xinput,
+    xfixes,
+    xproto,
     )
 
 def XISelectEvents(self, window, masks):
