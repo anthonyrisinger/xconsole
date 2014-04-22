@@ -1,5 +1,17 @@
 #!/bin/bash
 
+performance=$(
+    cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor \
+        /sys/class/drm/card0/device/power_dpm_state |
+        grep -v performance
+    )
+[[ -n ${performance} ]] &&
+    echo "performance: $performance" 1>&2 &&
+    exit 1
+
+/usr/bin/xrandr \
+    --output DVI-1 --primary --auto \
+    --output DVI-0 --auto --right-of DVI-1
 
 export PYTHONPATH=~/xconsole/lib #FIXME
 exec python2 -m xconsole.clients #FIXME
