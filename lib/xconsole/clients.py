@@ -673,7 +673,7 @@ class Port(_Identifier, object):
                 | xproto.ConfigWindow.Width
                 | xproto.ConfigWindow.Height
                 ),
-            self.atom.POS + self.atom.DIM,
+            (0, 0) + self.atom.DIM,
             ).check()
 
     def _set_window_attributes(self):
