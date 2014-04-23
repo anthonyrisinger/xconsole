@@ -34,6 +34,65 @@ logger.info(
         ))
 
 
+class _Repr(object):
+
+    def __repr__(self, other=None):
+        try:
+            ident = self.ident
+        except AttributeError:
+            ident = hex(id(self))
+        keys = [] and [    #XXX
+            k for k in vars(self)
+            if not k.startswith(('len_', 'num_', '__'))
+                and not k.endswith(('_len', '_num'))
+            ]
+        eol = '(' if keys else '>'
+        fmt = (
+            '<{self.__class__.__module__}'
+            '.{self.__class__.__name__}'
+            ':{ident}{eol}'
+            ).format(self=self, ident=ident, eol=eol)
+
+        if keys:
+            fmt = [fmt]
+            tbc = '.' * max(2, *map(len, keys))
+            for k in sorted(keys):
+                attr = getattr(self, k)
+                if k in ('window',):
+                    attr = xid(attr)
+                if isinstance(attr, xcb.List):
+                    attr = list(attr)
+                    if k in ('name',):
+                        attr = ''.join(map(chr, attr))
+                fmt.append('{0} {1} {2}'.format(k, tbc[len(k)-2:], attr))
+            fmt.append(')>')
+            fmt = '\n  '.join(fmt)
+
+        return fmt
+
+
+class _Identifier(_Repr):
+
+    @property
+    def atom(self):
+        atom = self.__dict__.get('atom')
+        if atom is not None:
+            return atom
+
+        atom = self.__dict__['atom'] = mapo.record()
+        return atom
+
+    @property
+    def ident(self, counter=__import__('collections').Counter()):
+        ident = self.atom.get('IDENT')
+        if ident is not None:
+            return ident
+
+        ident = self.atom.IDENT = counter[self.__class__]
+        counter[self.__class__] += 1
+        return ident
+
+
 # (reverse) http://stackoverflow.com/questions/8638792
 def FP1616(v):
     return v * 65536.0
@@ -44,14 +103,10 @@ class xid(int):
     def __str__(self):
         return str(hex(self))
 
-    __repr__ = __str__
 
-
-class Manager(object):
+class Manager(_Identifier, object):
 
     def __init__(self, *args, **kwds):
-        self.atom = mapo.record()
-        self.port_map = mapo.record()
         self.title_map = mapo.record()
         self.event_map = mapo.record()
         self.window_map = mapo.record()
@@ -218,9 +273,9 @@ class Manager(object):
 
         if controller is None:
             avail = sorted(
-                (c.atom.SLOT, c)
+                (c.ident, c)
                 for c in set(self.controller_map.values())
-                if 'SLOT' in c.atom and 'FRAME' not in c.port.atom
+                    if 'FRAME' not in c.port.atom
                 )
             if avail:
                 return avail[0][1].port
@@ -339,10 +394,10 @@ class Manager(object):
                             )
                         )).check()
 
-        conn.disconnect()
+        self.conn.disconnect()
 
 
-class Controller(object):
+class Controller(_Identifier, object):
 
     def __init__(self, manager, key=None):
         self.manager = manager
@@ -353,11 +408,7 @@ class Controller(object):
             want = {37, 50},
             )
 
-        self.atom = mapo.record()
-        self.atom.SLOT = len(set(
-            self.manager.controller_map.values()
-            )) - 1
-        self.atom.NAME = 'xconsole:{}'.format(self.atom.SLOT)
+        self.atom.NAME = 'xconsole:{}'.format(self.ident)
         self.atom.PORT = Port(manager=manager, controller=self)
 
     @property
@@ -371,13 +422,6 @@ class Controller(object):
             return
 
         self.atom['PORT'] = new
-        self.manager.port_map[self.key] = self
-        self.manager.port_map[(self.key[0], 0)] = self
-        self.manager.port_map[(0, self.key[1])] = self
-        if old is not None:
-            self.manager.port_map.pop(old.key, None)
-            self.manager.port_map.pop((old.key[0], 0), None)
-            self.manager.port_map.pop((0, old.key[1]), None)
 
     @property
     def keym(self):
@@ -445,15 +489,6 @@ class Controller(object):
 
         if 0 not in k:
             self.unsink_events()
-
-    def __repr__(self):
-        keys = ' '.join(sorted(map(str, self.atom)))
-        return (
-            '<{self.__class__.__name__}:'
-            ' {self.key}'
-            ' {keys}'
-            '>'
-            ).format(self=self, keys=keys)
 
     @property
     def atoms(self):
@@ -543,12 +578,11 @@ class Controller(object):
         self.keycodes.want |= self.keycodes.need
 
 
-class Port(object):
+class Port(_Identifier, object):
 
     def __init__(self, manager, controller=None, wid=None):
         self.manager = manager
         self.controller = controller
-        self.atom = mapo.record()
         self.atom.WID = list()
         self.window = wid
 
@@ -556,28 +590,10 @@ class Port(object):
         x = y = 0
         w = manager.root.width_in_pixels/2
         h = manager.root.height_in_pixels
-        if self.controller.atom.SLOT == 1:
+        if self.ident > 0:
             x = w
         self.atom.POS = (x, y)
         self.atom.DIM = (w, h)
-
-    def __repr__(self):
-        keys = ' '.join(sorted(map(str, self.atom)))
-        return (
-            '<{self.__class__.__name__}[{self.ident}]:'
-            ' {self.controller.key}'
-            ' {keys}'
-            '>'
-            ).format(self=self, keys=keys)
-
-    @property
-    def ident(self, gen=__import__('itertools').count()):
-        ident = self.atom.get('IDENT')
-        if ident is not None:
-            return ident
-
-        ident = self.atom.IDENT = next(gen)
-        return ident
 
     @property
     def frame(self):
@@ -738,44 +754,21 @@ _xcb = xcb.xcb
 xcb.__dict__.update(_xcb.__dict__)
 sys.modules['xcb.xcb'] = xcb
 
-class _repr(object):
-
-    def __repr__(self):
-        keys = list(
-            k for k in vars(self)
-                if not k.startswith(('len_', 'num_', '__'))
-                    and not k.endswith(('_len', '_num'))
-            )
-        minl = max(*map(len, keys)) + 2
-        fmt = ['<{self.__class__.__module__}.{self.__class__.__name__}(']
-        for k in sorted(keys):
-            tbc = '.' * (minl - len(k))
-            attr = getattr(self, k)
-            if k in ('window',):
-                attr = xid(attr)
-            if isinstance(attr, xcb.List):
-                attr = list(attr)
-                if k in ('name',):
-                    attr = ''.join(map(chr, attr))
-            fmt.append('{0} {1} {2}'.format(k, tbc, attr))
-        fmt.append(')>')
-        return '\n  '.join(fmt).format(self=self)
-
 #...save a copy of parent for manual unpacking
-class Struct(_repr, _xcb.Struct):
+class Struct(_Repr, _xcb.Struct):
 
     def __init__(self, parent, *args):
         _xcb.Struct.__init__(self, parent, *args)
         self.__parent__ = parent
 
-class Reply(_repr, _xcb.Reply):
+class Reply(_Repr, _xcb.Reply):
 
     def __init__(self, parent, *args):
         _xcb.Reply.__init__(self, parent, *args)
         self.__parent__ = parent
         self.response_type = struct.unpack_from('=B', parent)[0]
 
-class Event(_repr, _xcb.Event):
+class Event(_Repr, _xcb.Event):
 
     __xge__ = mapo.automap()
     __xge__[131][1]['xx2x4x2xHIHHB11x'].update(enumerate((
@@ -916,5 +909,4 @@ xinput.xinputExtension.XIChangeHierarchyChecked = XIChangeHierarchyChecked
 if __name__ == '__main__':
     __package__ = 'xconsole'
     manager = Manager(*sys.argv[1:])
-    conn = manager.conn #FIXME
     manager.main_loop()

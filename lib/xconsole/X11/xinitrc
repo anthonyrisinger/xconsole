@@ -14,7 +14,8 @@ performance=$(
     --output DVI-0 --auto --right-of DVI-1
 
 export PYTHONPATH=~/xconsole/lib #FIXME
-exec python2 -m xconsole.clients #FIXME
+exec python2 -c \
+    'from xconsole.clients import Manager; Manager().main_loop()'
 
 
 mv ~/xinitrc.log{,.old} 2>/dev/null
