@@ -591,7 +591,11 @@ class Port(_Identifier, object):
         w = manager.root.width_in_pixels/2
         h = manager.root.height_in_pixels
         if self.ident > 0:
-            x = w
+            x = w - 3
+            w = w + 3
+        else:
+            w = w - 3
+
         self.atom.POS = (x, y)
         self.atom.DIM = (w, h)
 
